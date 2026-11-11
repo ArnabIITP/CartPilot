@@ -619,7 +619,34 @@ async function paypalAccessToken() {
     throw new Error(
       "Could not authenticate with PayPal. Check your sandbox credentials.",
     );
-  return ((await response.json()) as { access_token: string }).access_token;
+  const payload = await readPaypalJson(response, "authentication");
+  if (typeof payload.access_token !== "string")
+    throw new Error("PayPal authentication did not return an access token.");
+  return payload.access_token as string;
+}
+
+async function readPaypalJson(response: Response, operation: string): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  try {
+    const payload: unknown = JSON.parse(text);
+    if (payload && typeof payload === "object") return payload as Record<string, unknown>;
+  } catch {
+    // PayPal or an intermediary can return an HTML error page instead of JSON.
+  }
+  const debugId = response.headers.get("paypal-debug-id");
+  const contentType = response.headers.get("content-type") || "unknown content type";
+  const preview = text.slice(0, 180).replace(/\s+/g, " ");
+  console.error(`[PayPal ${operation}] Expected JSON; received HTTP ${response.status}, ${contentType}${debugId ? `, debug ID ${debugId}` : ""}. ${preview}`);
+  throw new Error(
+    `PayPal Sandbox returned an unexpected response during ${operation} (HTTP ${response.status})${debugId ? `. PayPal reference: ${debugId}` : "."}`,
+  );
+}
+
+function paypalFailureMessage(payload: Record<string, unknown>, fallback: string) {
+  const details = Array.isArray(payload.details) ? payload.details[0] as Record<string, unknown> | undefined : undefined;
+  const description = typeof details?.description === "string" ? details.description : null;
+  const message = typeof payload.message === "string" ? payload.message : null;
+  return description || message || fallback;
 }
 
 app.get("/api/config", (_req, res) =>
@@ -775,7 +802,12 @@ app.post("/api/orders", rateLimit(10, 60_000), async (req, res) => {
         ],
       }),
     });
-    const payload = await response.json();
+    const payload = await readPaypalJson(response, "order creation");
+    if (!response.ok)
+      return res.status(response.status).json({
+        error: paypalFailureMessage(payload, "PayPal could not create the order."),
+        paypalDebugId: response.headers.get("paypal-debug-id") || undefined,
+      });
     return res.status(response.status).json(payload);
   } catch (error) {
     return res.status(503).json({
@@ -806,7 +838,13 @@ app.post("/api/orders/:orderId/capture", rateLimit(10, 60_000), async (req, res)
         },
       },
     );
-    return res.status(response.status).json(await response.json());
+    const payload = await readPaypalJson(response, "payment capture");
+    if (!response.ok)
+      return res.status(response.status).json({
+        error: paypalFailureMessage(payload, "PayPal could not capture this payment."),
+        paypalDebugId: response.headers.get("paypal-debug-id") || undefined,
+      });
+    return res.status(response.status).json(payload);
   } catch (error) {
     return res.status(503).json({
       error:
@@ -818,3 +856,4 @@ app.post("/api/orders/:orderId/capture", rateLimit(10, 60_000), async (req, res)
 });
 
 export default app;
+
