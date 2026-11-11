@@ -3,6 +3,10 @@
   "functions": {
     "api/[...path].ts": {
       "maxDuration": 60
+    },
+    "api/orders/[orderId]/capture.ts": {
+      "maxDuration": 60
     }
   }
 }
+
