@@ -19,6 +19,17 @@ type Props = {
   onError: (message: string) => void;
 };
 
+async function readApiResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `CartPilot checkout returned an unexpected response (HTTP ${response.status}). Please try again and share this status if it continues.`,
+    );
+  }
+}
+
 export default function PayPalButton({
   clientId,
   product,
@@ -73,9 +84,9 @@ export default function PayPalButton({
               ...(product.checkoutToken ? { checkoutToken: product.checkoutToken } : {}),
             }),
           });
-          const body = await response.json();
+          const body = await readApiResponse(response);
           if (!response.ok || !body.id)
-            throw new Error(body.error || "Unable to start checkout.");
+            throw new Error(typeof body.error === "string" ? body.error : "Unable to start checkout.");
           return body.id as string;
         },
         onApprove: async (data: { orderID: string }) => {
@@ -83,10 +94,10 @@ export default function PayPalButton({
             `/api/orders/${encodeURIComponent(data.orderID)}/capture`,
             { method: "POST" },
           );
-          const body = await response.json();
+          const body = await readApiResponse(response);
           if (!response.ok || body.status !== "COMPLETED")
             throw new Error(
-              body.error || "PayPal did not confirm this payment.",
+              typeof body.error === "string" ? body.error : "PayPal did not confirm this payment.",
             );
           onSuccess(data.orderID);
         },
@@ -114,3 +125,4 @@ export default function PayPalButton({
     </div>
   );
 }
+
