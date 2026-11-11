@@ -100,6 +100,11 @@ export default function ProductCard({
             </a>
           )}
         </div>
+        {product.url && (
+          <p className="commission-disclosure">
+            We may earn a commission when you buy through product links.
+          </p>
+        )}
       </div>
     </article>
   );

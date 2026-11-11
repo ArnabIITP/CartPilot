@@ -813,6 +813,12 @@ a {
   display: grid;
   color: #8c9388;
 }
+.commission-disclosure {
+  margin: 5px 0 0;
+  color: #777d73;
+  font-size: 10px;
+  line-height: 1.4;
+}
 .selection-bar {
   display: flex;
   align-items: center;
